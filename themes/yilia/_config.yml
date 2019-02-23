@@ -36,7 +36,7 @@ show_all_link: 'More'
 # 数学公式
 mathjax: false
 # 是否在新窗口打开链接
-open_in_new: true
+open_in_new: false
 
 # 打赏type设定：0-关闭打赏； 1-文章对应的md文件里有reward:true属性，才有打赏； 2-所有文章均有打赏
 reward_type: 1
@@ -60,7 +60,7 @@ google_analytics: ''
 favicon: /favicon.png
 
 #头像url
-avatar: /images/Avatar.jpg
+avatar: https://m9ljmg.dm.files.1drv.com/y4myIgBgxG_YpCoXDfgFOdbfar6iSHd6nbo9TbicyE86PEtXOLB-zb38tq3vRYbJxh7edVXQliufIbS2Cll4I0unCxJ_qraNFIey_R0ugD-3izZ17CxLro6vdikP1MysKg8MZ8JvnS4jJCMLY2-ki8i46HJhjqGIAbfcMHp1E-fN_1pbZE6B4g2ZvkGfanBGkIjME0zei3SW4L6xYoczHbBNg?width=2391&height=2391&cropmode=none
 
 #是否开启分享
 share_jia: true
@@ -80,7 +80,7 @@ gitment_oauth:
   client_secret: '090ae01603fca4e1fde4823a5569416122f97c7c'       #client secret
 
 style:
-  header: '#4d4d4d'
+  header: '#4298F5'
   slider: 'linear-gradient(200deg,#a0cfe4,#e8c37e)'
 
 slider:
