@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"riccoqu.github.io","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="“那是在一个还只有汇编语言的时代，一只满怀梦想的新手程序猿刚刚完成了一个小程序。“保存，运行，完美！”。可是好奇心强的他发现一些很有意思的事情:    为何一个64kb的程序能够在一个只有32kb内存的电脑里运行? 为什么运行中的程序能够互不干扰,结束后又能继续运行新的程序?”    于是新奇的翻开书,发现了操作系统背着程序员偷偷做的一系列幕后工作。。。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="初窥OS段页式管理概貌">
+<meta property="og:url" content="https://riccoqu.github.io/2015/11/13/%E5%88%9D%E7%AA%A5OS%E6%AE%B5%E9%A1%B5%E5%BC%8F%E7%AE%A1%E7%90%86%E6%A6%82%E8%B2%8C/">
+<meta property="og:site_name" content="Ricco&#39;s Blog">
+<meta property="og:description" content="“那是在一个还只有汇编语言的时代，一只满怀梦想的新手程序猿刚刚完成了一个小程序。“保存，运行，完美！”。可是好奇心强的他发现一些很有意思的事情:    为何一个64kb的程序能够在一个只有32kb内存的电脑里运行? 为什么运行中的程序能够互不干扰,结束后又能继续运行新的程序?”    于是新奇的翻开书,发现了操作系统背着程序员偷偷做的一系列幕后工作。。。">
+<meta property="og:locale">
+<meta property="og:image" content="http://img.blog.csdn.net/20151113110518869">
+<meta property="og:image" content="http://img.blog.csdn.net/20151113121634038">
+<meta property="og:image" content="http://img.blog.csdn.net/20151113105401242">
+<meta property="og:image" content="http://img.blog.csdn.net/20151113105455525">
+<meta property="og:image" content="http://img.blog.csdn.net/20151113105527579">
+<meta property="article:published_time" content="2015-11-12T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-02-27T14:13:00.462Z">
+<meta property="article:author" content="riccoqu">
+<meta property="article:tag" content="Linux">
+<meta property="article:tag" content="Operating System">
+<meta property="article:tag" content="内存管理">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://img.blog.csdn.net/20151113110518869">
+
+<link rel="canonical" href="https://riccoqu.github.io/2015/11/13/%E5%88%9D%E7%AA%A5OS%E6%AE%B5%E9%A1%B5%E5%BC%8F%E7%AE%A1%E7%90%86%E6%A6%82%E8%B2%8C/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-Hans'
+  };
+</script>
+
+  <title>初窥OS段页式管理概貌 | Ricco's Blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">Ricco's Blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">forever youthful, forever weeping</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives<span class="badge">7</span></a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-Hans">
+    <link itemprop="mainEntityOfPage" href="https://riccoqu.github.io/2015/11/13/%E5%88%9D%E7%AA%A5OS%E6%AE%B5%E9%A1%B5%E5%BC%8F%E7%AE%A1%E7%90%86%E6%A6%82%E8%B2%8C/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="riccoqu">
+      <meta itemprop="description" content="this guy is lazy, dont like to leave a description">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Ricco's Blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          初窥OS段页式管理概貌
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2015-11-13 00:00:00" itemprop="dateCreated datePublished" datetime="2015-11-13T00:00:00+08:00">2015-11-13</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2022-02-27 22:13:00" itemprop="dateModified" datetime="2022-02-27T22:13:00+08:00">2022-02-27</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <blockquote>
+<p>“那是在一个还只有汇编语言的时代，一只满怀梦想的新手程序猿刚刚完成了一个小程序。“保存，运行，完美！”。可是好奇心强的他发现一些很有意思的事情:</p>
+</blockquote>
+<blockquote>
+<ul>
+<li>为何一个64kb的程序能够在一个只有32kb内存的电脑里运行?</li>
+<li>为什么运行中的程序能够互不干扰,结束后又能继续运行新的程序?”</li>
+</ul>
+</blockquote>
+<blockquote>
+<p>于是新奇的翻开书,发现了操作系统背着程序员偷偷做的一系列幕后工作。。。</p>
+</blockquote>
+<span id="more"></span>
+
+<h1 id="地址空间"><a href="#地址空间" class="headerlink" title="地址空间"></a><strong>地址空间</strong></h1><p>这一切让我先从我们平常最熟悉的程序开始说起,以便先了解两个基本的概念：</p>
+<h4 id="1-虚拟地址"><a href="#1-虚拟地址" class="headerlink" title="1.虚拟地址"></a><strong>1.虚拟地址</strong></h4><pre><code>data segment
+tab db &#39;hello world$&#39;  ;
+data ends
+code segment
+assume cs:code, ds:data  ;
+start:
+        mov ax,data
+        mov ds,ax        
+        lea dx,tab
+        mov ah,9h
+        int 21h
+        mov ah,4ch
+        int 21h        
+ code  ends
+        end start   
+</code></pre>
+<ul>
+<li><p>这是一个用汇编写的HelloWorld程序。程序中有<strong>数据段</strong>(datasegment)和<strong>代码段</strong>(code segment),关于段页式管理的部分后面再说。这里每行代码的的偏移地址我们记做它为<strong>虚拟地址</strong>，因为这个地址只是在程序中是从0开始增加,运行时会被映射而产生变化的地址,所以它并不是真实的物理地址而是属于逻辑上划分的。(多亏有虚拟空间这个东西,要不我们以后写代码还得考虑每条的地理位置简直心累！)</p>
+</li>
+<li><p>例如第一个mov指令(mov ax,data)，我们可以看作在代码段内的偏移地址为0，而第二条指令(mov ds,ax)的偏移地址则应该为:<strong>上一条的虚拟地址+上一条指令的长度</strong>。</p>
+</li>
+</ul>
+<h4 id="2-虚拟内存"><a href="#2-虚拟内存" class="headerlink" title="2.虚拟内存"></a><strong>2.虚拟内存</strong></h4><ul>
+<li><p>在最早的计算机中是没有存储器这个抽象的概念，这就意味这每个程序猿在写程序的时候直接用的是<strong>物理地址</strong>！在这种简单粗暴的寻址方式下出现的就是无数令人抓狂的问题。程序中的每条指令需要在内存中有固定的位置，如果位置上有别人正在运行,那么就是一切崩溃的开始(╯‵□′)╯︵┻━┻。甚至用户程序可能一个不小心就会毁掉操作系统！</p>
+</li>
+<li><p>所以为了<strong>宇宙和平</strong>！操作系统为每个进程提供相互独立的内存地址空间就变的刻不容缓。于是乎出现了一种<strong>存储器抽象:地址空间</strong>。它可以令操作系统在程序运行时完成对进程的<strong>保护</strong>和<strong>重定位</strong>,使得进程之间的运行相互不干扰，我们在程序之中只需要像上面的汇编一样代码从地址0开始一行一行的编写代码，等需要运行的时候再由操作系统将准备运行的程序进行重定位到内存上一个空闲的地方。这是不是很棒！</p>
+</li>
+<li><p>尽管地址空间解决了很大一部分问题,但是为了满足日益膨胀的软件规模,现有的内存已经或多或少不够用了,聪明的计算机大神们为了解决这些问题又用了一种新的技术:<strong>虚拟内存</strong>。虚拟内存的出现使得我们可以运行比内存容量大的多的程序。虚拟内存让每个程序有了自己的地址空间(上面提到的那个玩意儿)，这个空间被分成了多个块，每一块称作“<strong>页面</strong>“，可以理解所谓分页就是将我们的程序中的代码在逻辑上分成一块一块的，每一块的划分单位就是页面。运行程序时页面经由硬件执行必要的映射，使得我们程序中的虚拟地址成为我们计算机内存中真正的物理地址,完成了将程序的一部分真正的映射到了内存中</p>
+<blockquote>
+<p>这就是这篇文章要介绍的分页管理!看到这里脑中对虚拟内存和页面还没有概念？别着急，接着往下看就慢慢清楚了！)</p>
+</blockquote>
+</li>
+</ul>
+<hr>
+<h1 id="让程序跑起来"><a href="#让程序跑起来" class="headerlink" title="让程序跑起来!"></a><strong>让程序跑起来!</strong></h1><p><img src="http://img.blog.csdn.net/20151113110518869" alt="这里写图片描述"></p>
+<ul>
+<li><p>图中左边是我们是<strong>页表</strong>(可以理解为一张记录页面与页框映射关系的一样表)。如果我们以4K为页面的大小单元的话(不是必须,但为普遍),我们的程序就需要:64&#x2F;4&#x3D;16个页面(就这样被切成了16块(｀･д･´))。但是，糟糕的问题是,真实的计算机中只有右边那可怜的32K内存,所以实际上它只能在真实的内存中保存8个<strong>页框</strong>(通常页面和页框的大小是相等的，因为他们需要进行后面提到的映射)。</p>
+</li>
+<li><p>假设程序刚开始运行时可能会用到程序中0页,1页，2页，3页，4页，5页，9页，11页中的代码。那么当程序运行的时候在真实内存中就需要更新页表(就是将我们需要用到的页面和叶框建立映射关系),并将我们需要用到的页加载到实际内存中,这样就建立好了映射关系(图中的箭头)。图中左边为已经建立好映射关系的页表。</p>
+</li>
+</ul>
+<h4 id="这里是第一种情况—命中"><a href="#这里是第一种情况—命中" class="headerlink" title="这里是第一种情况—命中"></a><strong>这里是第一种情况—命中</strong></h4><ul>
+<li>**注意!程序开始运行了!<strong>当我们的程序运行到0~4K行代码的时候,程序中使用到的一条 虚拟地址 会被送到一个叫</strong>内存管理单元(MMU)**的地方,MMU发现这条虚拟地址位于页表的第0页，于是它查询页表(页面就是页表中的索引，页表的索引从0开始,例如页面2就是页表中的第三项)发现第0页中存在内容(不存在内容的地方都打上的x),然后读取内容(页框编号)，接着这条虚拟地址中页面编号的部分就被替换为取出的页框编号部分,形成了真实的物理地址!</li>
+</ul>
+<h4 id="下面是另一种情况—缺页"><a href="#下面是另一种情况—缺页" class="headerlink" title="下面是另一种情况—缺页"></a><strong>下面是另一种情况—缺页</strong></h4><ul>
+<li>那么当我们的程序运行到24k~28k（页面7）的时候,传送的虚拟地址经MMU查询页表后发现页表中没有这个内容（标志为x）,也就是说真实内存中没有对应的页框！这时候MMU发出一个<strong>缺页中断</strong>,使得CPU陷入到操作系统。操作系统会在页表中通过页表置换算法找到一个可以移除的表项，然后将导致陷入中断的的那部分程序加载入内存,更新页表,使得页面7有了对应的页框，然后重新启动引起陷阱的指令，这样就完成了页表的更新。当然被如果程序运行到了被移除的那个表项对应的页面上就会又掉进陷阱(陷入操作系统)，继续更新页表。。。</li>
+</ul>
+<blockquote>
+<p>(这就是分页的基本过程，看完如果没有深入骨髓的理解就请点击右上角。。。好吧，我就随便说说哈。。。这里只需要有个大致的理解页面管理系统是如何运作的就好~(～o￣▽￣)～o)。</p>
+</blockquote>
+<h3 id="接下来就是细腻的重点——页表"><a href="#接下来就是细腻的重点——页表" class="headerlink" title="接下来就是细腻的重点——页表"></a>接下来就是细腻的重点——<strong>页表</strong></h3><p>话不多说直接上图:<br><img src="http://img.blog.csdn.net/20151113121634038" alt="这里写图片描述"><br>注:在我们刚刚的程序中主机有16位地址线。</p>
+<ul>
+<li>在虚拟地址中,16位的虚拟地址前4位(足够能表示我们分出来的16个页面)作为页面的编号,后12位(表示内存大小为4096个字节)则为<strong>偏移地址</strong>。<h4 id="地址映射的步骤"><a href="#地址映射的步骤" class="headerlink" title="地址映射的步骤"></a><strong>地址映射的步骤</strong></h4></li>
+<li>那让我们看看如果在程序中有个语句要访问地址:8196(二进制为:0010 00000000000100,注意中间那个忧伤的空格)这个地址时事实又是怎么样的呢？</li>
+</ul>
+<p> 1.MMU发现8196这个地址存在于第3页(8k~12k),查询得到内容为110(也就是6)</p>
+<p> 2.检查页表第3表项中的状态标志(测试状态标志再后面，别着急后面会说明页表项)发现标志为’1’(即该页面对应的页框存在于内存中),一切测试通过!</p>
+<p> 3.最重要的最后一步:将得到的3位<strong>页框编号</strong>加上虚拟地址中的12位<strong>偏移地址</strong>，这样就形成了<strong>15位的物理地址</strong>，虚拟地址就这样完成了从8196映射到了内存中24580(位于页7 24k~28k)这个<strong>物理地址</strong>了!</p>
+<p> 以上就是分页管理映射的大概流程。</p>
+<h3 id="接下来需要知道的是—页表项"><a href="#接下来需要知道的是—页表项" class="headerlink" title="接下来需要知道的是—页表项"></a>接下来需要知道的是—<strong>页表项</strong></h3><p>在上一个图中我们当我们取得一个页框的时候并不能仅仅只是进行数位的替换,还需要测试页表项的许多位，<br>继续放图:<br><img src="http://img.blog.csdn.net/20151113105401242" alt="这里写图片描述"></p>
+<ul>
+<li><p><strong>高速缓存位</strong>:可以禁止页面被缓存,CPU希望IO等设备从接口直接取得数据,而不是从内存中一个缓存的副本中。</p>
+</li>
+<li><p><strong>访问位</strong>:当前页被访问时会被设置，此位可以帮助操作系统的页面置换算法。</p>
+</li>
+<li><p><strong>修改位</strong>:当前页内容被修改后该位会被设置,当页面置换算法决定需要从表项中移除此页面时如果发现被修改了则需要将修改后的数据重新写入硬盘中。如果没被修改则可以直接丢弃。</p>
+</li>
+<li><p><strong>保护位</strong>:说明了当前页面允许执行的操作（读&#x2F;写&#x2F;执行 等，这个位在平常的系统权限管理中相当重要!）。</p>
+</li>
+<li><p><strong>是否存在位</strong>:表明了当前页框是否存在于内存当中,此位可以用来判断是否缺页。</p>
+</li>
+</ul>
+<p>以上的这些位都是在查询页表的过程中被测试的。比如代码段的页面会被设置为只读，如果一不小心程序企图写入这个页面，那么操作系统就会发出一个信号给进程并停止进程，告诉它”你摊上大事了!”Σ( ° △ °|||)︴</p>
+<h2 id="更快-更快-更快-——快表"><a href="#更快-更快-更快-——快表" class="headerlink" title="更快!更快!更快!——快表"></a>更快!更快!更快!——<strong>快表</strong></h2><ul>
+<li><p>在使用分页管理后使得内存的管理更加方便了，但是有一个问题一直在头上萦绕不去”如果我们每次关于内存的操作都要完整的查询一次整个页表的话那无疑是非常没有效率并且非常笨的”。机智的计算机大神们在这个问题出现后’噔’的一下计算机大神们就想出了可以利用**检测缓冲区(TLB也就是”快表”)**这个设备解决这个问题。</p>
+</li>
+<li><p>快表就是将<strong>少量且常用</strong>的<strong>页面</strong>放在一个区域(硬件或内存,取决于具体实现)中,每次的查询操作会先在快表中寻找,如果命中且符合测试条件(即测试各种标志位),则直接在快表中取出页框号,然后执行地址映射的流程。如果在快表内未命中则会进行正常的页表查询(在内存中),并在快表中淘汰一个页表项给这个新的页面替换。</p>
+</li>
+<li><p>TLB可以使用硬件也可以使用软件实现。</p>
+</li>
+</ul>
+<p> 1.当在软件TLB中未差找到页表项但是内存中有时，就会发生一个”<strong>软中断</strong>“,接着就会更新一下TLB(从内存中将页表项读入TLB)。</p>
+<p> 2.如果在 TLB和 内存中都未找到页表项时就会发生一个”<strong>硬中断</strong>“,此时则会从硬盘中读取页面并更新TLB。所以我们页可以想象到硬中断相比软中断来说要耗费巨大的时间。</p>
+<hr>
+<h1 id="拥抱更大的内存"><a href="#拥抱更大的内存" class="headerlink" title="拥抱更大的内存!"></a><strong>拥抱更大的内存!</strong></h1><h3 id="32位计算机的到来"><a href="#32位计算机的到来" class="headerlink" title="32位计算机的到来"></a><strong>32位计算机的到来</strong></h3><p>时代在进步，很快计算机发展到了32位，这也使得有了更大虚拟地址空间和物理内存。再像之前那样将所有表项都放在一个页表中显然会带来效率等各种问题(比如32位机支持最大4GB内存,那么我们需要的页表项的数目为:(4<em>1024</em>1024)&#x2F;4&#x3D;1048576项,足足有一百多万项!)。于是又一个解决办法出现了。。。</p>
+<h4 id="—多级页表"><a href="#—多级页表" class="headerlink" title="—多级页表"></a><strong>—多级页表</strong></h4><p>嘿!上图:<br><img src="http://img.blog.csdn.net/20151113105455525" alt="这里写图片描述"><br>多级页表就如名字一样有很多层的划分，这里以2级页表举例(再多也一样，只是更加复杂)</p>
+<ul>
+<li><p>想一下当我们还在16位CPU的时代，通过将<strong>后12位作为偏移地址，前4为作为页面编号</strong>解决了分页问题，成功的跑起了那个小程序。与时俱进的我们怎么能够满足于现状!为了拥抱更大的内存。</p>
+</li>
+<li><p>我们需要将当前的32位地址进行<strong>重新的划分:前10位为目录，中间10位为页面，后12位为偏移地址</strong>。(想象一下顶级页表可以有2^10&#x3D;1024个项，而每个二级页表可以表4k*1024&#x3D;4MB的空间，也就是说一个顶级页表可以表4MB×1024&#x3D;4GB的空间，这刚好是32位计算机能支持的最大内存)。</p>
+</li>
+<li><p>当我们查找一条虚拟地址时，通过:</p>
+</li>
+</ul>
+<p> <strong>1.前10位索引查找到顶级页表中的二级页表地址</strong><br> <strong>2.通过虚拟地址的中间10位索引到二级页表中的页表项</strong><br> <strong>3.接下来就使用查找到的页表项中的页框号加上虚拟地址最后的12位偏移地址</strong>组成了真实的物理地址!</p>
+<ul>
+<li>在一个进程执行的时候它实际上也许只需要几个页表。当程序一不小心访问到其他页面的时候无法通过标志位测试而回给操作系统发出”缺页中断“,操作系统检测到了这个进程又企图访问我们不想让它看到的地方，于是又发给它个信号说”你又摊上大事了!”Σ( ° △ °|||)︴，然后无情关闭了它。</li>
+</ul>
+<hr>
+<h3 id="64位需要更机智的页表方法"><a href="#64位需要更机智的页表方法" class="headerlink" title="64位需要更机智的页表方法"></a><strong>64位需要更机智的页表方法</strong></h3><blockquote>
+<p>虽然多级页表在32位机上有一个很好的表现，但是时代又进步了!64位计算机开始普遍。<br>地址空间增长到了2^64,如果页面大小依旧为4kb，那么需要有一个2^52个表项的页表。再如果每个表项8个字节，那么需要多么大的容量你们可以自己算一算(美到不敢想象～)。<br>那么问题就又来了。。。<br>不过既然我们有2^64这么大的虚拟地址空间，而仅仅只有几个G可怜的小内存那么咱们之前用过的分页肯定就是不能继续再使用了。如果我们。。。换一下?<strong>是的!</strong><br>——我们可以改变由虚拟地址映射物理地址的做法而直接由物理地址映射到虚拟地址!这么一变我们的页表就变小的可以接受了。。。这就是</p>
+</blockquote>
+<h4 id="—倒排列表"><a href="#—倒排列表" class="headerlink" title="—倒排列表"></a><strong>—倒排列表</strong></h4><ul>
+<li><p>先抛出<strong>缺点</strong>:倒排列表虽然会缩小页表的规模，但是它会使得从虚拟地址到物理地址的转化过程变得相当困难(反向查找，想想就难受)。</p>
+</li>
+<li><p>当然有缺点我们就要克服缺点!这次又该轮到TLB出场了,由TLB缓存住经常使用的页面可以大大加快效率。但是如果发生缺页时我们应该怎么办？一条条翻完整个倒排页表来找嘛？—**怎么会!**那可不得累死了。。。∑(っ°Д°;)っ。</p>
+</li>
+<li><p>所以机智的计算机大神们又带来的新的解决方案—<strong>散列</strong>!通过将虚拟页面进行散列,如果将散列的虚拟页面与物理页面一样多，那么冲突链都会是可以接受的范围。所以通过<strong>散列+TLB</strong>的方法成功的将我们从超过3000万GB的页表中释放出来!<br>o(<em>￣▽￣</em>)ブ这可得好好庆祝下。。。</p>
+</li>
+</ul>
+<hr>
+<h1 id="关于各种页面置换算法"><a href="#关于各种页面置换算法" class="headerlink" title="关于各种页面置换算法"></a><strong>关于各种页面置换算法</strong></h1><h4 id="（额。那又是一个大坑。。-╮-╯-╰-╭）"><a href="#（额。那又是一个大坑。。-╮-╯-╰-╭）" class="headerlink" title="（额。那又是一个大坑。。 ╮(╯_╰)╭）"></a><strong>（额。那又是一个大坑。。 ╮(╯_╰)╭）</strong></h4><p>所以这里就贴部分算法的百度连接大家有兴趣的可以看看～</p>
+<p>1.<a target="_blank" rel="noopener" href="http://baike.baidu.com/link?url=8kFsLNxCkL6ZRQ1qInfj40MCrscXKdFaDMlQnDsT-TuUEXDPj_kU80MQbrFTXZa7XpWEHYi_g5d5Krd0y22ob_">最佳页面置换算法</a><br>2.最近未使用页面置换算法(么有链接额。。)<br>3.<a target="_blank" rel="noopener" href="http://baike.baidu.com/view/9932283.htm">先进先出页面置换算法</a><br>4.<a target="_blank" rel="noopener" href="http://baike.baidu.com/view/5015063.htm">第二次机会页面置换算法</a><br>5.<a target="_blank" rel="noopener" href="http://baike.baidu.com/link?url=kbCAbFPDXXwEF4IWsBIcFFygCDjIeJ_6ib80LRRrzgM_CFpS2Ks3G8mXqF1s0iSVpX-f_Jf8zx2asSpi-C943_">时钟页面置换算法</a><br>6.<a target="_blank" rel="noopener" href="http://wenku.baidu.com/link?url=I66I9aDoWU0PVNEMHpYln4P0G4ej0oY-5rqeoaPzGNHrfAdxpvgX0p_hq8CtL8Vksyoc3KNwbuGuZRKknzvTWi4_eGBIlqmA0G3BYczLnzO">最近最少使用页面算法</a><br>7.<a href="DWg4lIV3Jg27fRuB2H1wInOvqEhEcEzJaQMXCHzVvgHEnu94tHsZOM283eytRUuDD6Vmk72I8Wgqe7J9lnJHDDwoRNLtnxlIPlXAcbd1o1e">工作集页面置换算法</a><br>8.工作集时钟页面置换算法(么有链接额。。)</p>
+<hr>
+<h1 id="段页式管理"><a href="#段页式管理" class="headerlink" title="段页式管理"></a><strong>段页式管理</strong></h1><p>分段的实现我们都不会陌生，程序就是由许许多多的段构成并且在内存中运行的。<br>段的大小可以是不固定的，相反页的大小是固定的。但是如果在操作系统中只有段的存在必然会与分区管理一样容易产生内存碎片(好慌~)。如果我门将段的管理与页的管理相结合。。。<br>那么就是又一个新的管理方式!!!(好累…(┙&gt;∧&lt;)┙へ┻┻)</p>
+<p>段页式管理其实就是在段的偏移地址里面容纳了页面号组成了<strong>段+页面+偏移地址</strong>的虚拟地址格式，所以理解了分页管理这里也很容易 o(*≧▽≦)ツ┏━┓。</p>
+<p>在操作系统中则为进程维护了一张类似这样的几张表:<br><img src="http://img.blog.csdn.net/20151113105527579" alt="这里写图片描述"></p>
+<ul>
+<li>没错，了解了前面的分页管理方式后我们应该可以很明白的看懂这个的地址转换方式。现在让我们回顾下开头的汇编程序，找到那个<strong>code segment</strong>,这就是<strong>段</strong>!当我们程序发现要执行code段的时候将段描述符所指向页表的<strong>地址</strong>加载入<strong>寄存器</strong>(方便接下来指令的快速查找)。然后就是通过虚拟地址的中间的页面号在页表中查找对应的页表项。再然后的然后就你就会噢的一下都懂了～<blockquote>
+<p>一切似乎又有了熟悉的味道。。。(￣▽￣”) 。。。</p>
+</blockquote>
+</li>
+</ul>
+<p> 最后附上参考资料:《现代操作系统》-Andrew S.Tanenbaum</p>
+<p>如有错误希望能得到指点,不胜感激 :D</p>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div></div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    Donate
+  </button>
+  <div id="qr" style="display: none;">
+
+  </div>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Linux/" rel="tag"># Linux</a>
+              <a href="/tags/Operating-System/" rel="tag"># Operating System</a>
+              <a href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" rel="tag"># 内存管理</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item"></div>
+      <div class="post-nav-item">
+    <a href="/2016/03/24/Linux%E6%97%A5%E5%BF%97%E6%96%87%E4%BB%B6%E4%B8%8ESyslog%E5%87%BD%E6%95%B0%E4%BB%8B%E7%BB%8D/" rel="next" title="Linux日志文件与Syslog函数介绍">
+      Linux日志文件与Syslog函数介绍 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.</span> <span class="nav-text">地址空间</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-%E8%99%9A%E6%8B%9F%E5%9C%B0%E5%9D%80"><span class="nav-number">1.0.0.1.</span> <span class="nav-text">1.虚拟地址</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98"><span class="nav-number">1.0.0.2.</span> <span class="nav-text">2.虚拟内存</span></a></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E8%AE%A9%E7%A8%8B%E5%BA%8F%E8%B7%91%E8%B5%B7%E6%9D%A5"><span class="nav-number">2.</span> <span class="nav-text">让程序跑起来!</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%99%E9%87%8C%E6%98%AF%E7%AC%AC%E4%B8%80%E7%A7%8D%E6%83%85%E5%86%B5%E2%80%94%E5%91%BD%E4%B8%AD"><span class="nav-number">2.0.0.1.</span> <span class="nav-text">这里是第一种情况—命中</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%B8%8B%E9%9D%A2%E6%98%AF%E5%8F%A6%E4%B8%80%E7%A7%8D%E6%83%85%E5%86%B5%E2%80%94%E7%BC%BA%E9%A1%B5"><span class="nav-number">2.0.0.2.</span> <span class="nav-text">下面是另一种情况—缺页</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8E%A5%E4%B8%8B%E6%9D%A5%E5%B0%B1%E6%98%AF%E7%BB%86%E8%85%BB%E7%9A%84%E9%87%8D%E7%82%B9%E2%80%94%E2%80%94%E9%A1%B5%E8%A1%A8"><span class="nav-number">2.0.1.</span> <span class="nav-text">接下来就是细腻的重点——页表</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9C%B0%E5%9D%80%E6%98%A0%E5%B0%84%E7%9A%84%E6%AD%A5%E9%AA%A4"><span class="nav-number">2.0.1.1.</span> <span class="nav-text">地址映射的步骤</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8E%A5%E4%B8%8B%E6%9D%A5%E9%9C%80%E8%A6%81%E7%9F%A5%E9%81%93%E7%9A%84%E6%98%AF%E2%80%94%E9%A1%B5%E8%A1%A8%E9%A1%B9"><span class="nav-number">2.0.2.</span> <span class="nav-text">接下来需要知道的是—页表项</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9B%B4%E5%BF%AB-%E6%9B%B4%E5%BF%AB-%E6%9B%B4%E5%BF%AB-%E2%80%94%E2%80%94%E5%BF%AB%E8%A1%A8"><span class="nav-number">2.1.</span> <span class="nav-text">更快!更快!更快!——快表</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%8B%A5%E6%8A%B1%E6%9B%B4%E5%A4%A7%E7%9A%84%E5%86%85%E5%AD%98"><span class="nav-number">3.</span> <span class="nav-text">拥抱更大的内存!</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#32%E4%BD%8D%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%9A%84%E5%88%B0%E6%9D%A5"><span class="nav-number">3.0.1.</span> <span class="nav-text">32位计算机的到来</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E2%80%94%E5%A4%9A%E7%BA%A7%E9%A1%B5%E8%A1%A8"><span class="nav-number">3.0.1.1.</span> <span class="nav-text">—多级页表</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#64%E4%BD%8D%E9%9C%80%E8%A6%81%E6%9B%B4%E6%9C%BA%E6%99%BA%E7%9A%84%E9%A1%B5%E8%A1%A8%E6%96%B9%E6%B3%95"><span class="nav-number">3.0.2.</span> <span class="nav-text">64位需要更机智的页表方法</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E2%80%94%E5%80%92%E6%8E%92%E5%88%97%E8%A1%A8"><span class="nav-number">3.0.2.1.</span> <span class="nav-text">—倒排列表</span></a></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%85%B3%E4%BA%8E%E5%90%84%E7%A7%8D%E9%A1%B5%E9%9D%A2%E7%BD%AE%E6%8D%A2%E7%AE%97%E6%B3%95"><span class="nav-number">4.</span> <span class="nav-text">关于各种页面置换算法</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%EF%BC%88%E9%A2%9D%E3%80%82%E9%82%A3%E5%8F%88%E6%98%AF%E4%B8%80%E4%B8%AA%E5%A4%A7%E5%9D%91%E3%80%82%E3%80%82-%E2%95%AE-%E2%95%AF-%E2%95%B0-%E2%95%AD%EF%BC%89"><span class="nav-number">4.0.0.1.</span> <span class="nav-text">（额。那又是一个大坑。。 ╮(╯_╰)╭）</span></a></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%AE%B5%E9%A1%B5%E5%BC%8F%E7%AE%A1%E7%90%86"><span class="nav-number">5.</span> <span class="nav-text">段页式管理</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">riccoqu</p>
+  <div class="site-description" itemprop="description">this guy is lazy, dont like to leave a description</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">7</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">tags</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">riccoqu</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

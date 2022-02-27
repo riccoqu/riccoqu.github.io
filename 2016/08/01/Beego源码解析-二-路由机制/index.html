@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"riccoqu.github.io","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="上一篇文章Beego源码解析(一)-配置项初始化流程介绍了 Beego关于配置项初始化的流程。那么今天就来说说在 Beego中非常重要的路由机制.Beego到现在 v1.6.1版本为止支持了:固定路由、正则路由、自动路由这三种路由方法.关于这三种路由的详细用法可以参考官方给出的开发文档,这里面已经记录的很全面了.    所以我们今天这篇文章就是要介绍这三种路由是如何在 Beego内部实现的.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Beego源码解析(二)-路由机制">
+<meta property="og:url" content="https://riccoqu.github.io/2016/08/01/Beego%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E4%BA%8C-%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6/">
+<meta property="og:site_name" content="Ricco&#39;s Blog">
+<meta property="og:description" content="上一篇文章Beego源码解析(一)-配置项初始化流程介绍了 Beego关于配置项初始化的流程。那么今天就来说说在 Beego中非常重要的路由机制.Beego到现在 v1.6.1版本为止支持了:固定路由、正则路由、自动路由这三种路由方法.关于这三种路由的详细用法可以参考官方给出的开发文档,这里面已经记录的很全面了.    所以我们今天这篇文章就是要介绍这三种路由是如何在 Beego内部实现的.">
+<meta property="og:locale">
+<meta property="article:published_time" content="2016-07-31T16:22:08.000Z">
+<meta property="article:modified_time" content="2022-02-27T13:20:40.950Z">
+<meta property="article:author" content="riccoqu">
+<meta property="article:tag" content="Beego Framework">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://riccoqu.github.io/2016/08/01/Beego%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E4%BA%8C-%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-Hans'
+  };
+</script>
+
+  <title>Beego源码解析(二)-路由机制 | Ricco's Blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">Ricco's Blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">forever youthful, forever weeping</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives<span class="badge">7</span></a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-Hans">
+    <link itemprop="mainEntityOfPage" href="https://riccoqu.github.io/2016/08/01/Beego%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E4%BA%8C-%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="riccoqu">
+      <meta itemprop="description" content="this guy is lazy, dont like to leave a description">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Ricco's Blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Beego源码解析(二)-路由机制
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2016-08-01 00:22:08" itemprop="dateCreated datePublished" datetime="2016-08-01T00:22:08+08:00">2016-08-01</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2022-02-27 21:20:40" itemprop="dateModified" datetime="2022-02-27T21:20:40+08:00">2022-02-27</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <blockquote>
+<p>上一篇文章<a href="https://riccoqu.github.io/2016/07/30/Beego%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E4%B8%80-%E2%80%94%E9%85%8D%E7%BD%AE%E9%A1%B9%E5%88%9D%E5%A7%8B%E5%8C%96%E6%B5%81%E7%A8%8B/">Beego源码解析(一)-配置项初始化流程</a>介绍了 Beego关于配置项初始化的流程。那么今天就来说说在 Beego中非常重要的<strong>路由机制</strong>.<br>Beego到现在 v1.6.1版本为止支持了:<strong>固定路由</strong>、<strong>正则路由</strong>、<strong>自动路由</strong>这三种路由方法.<br>关于这三种路由的详细用法可以参考官方给出的<a href=""><strong>开发文档</strong></a>,这里面已经记录的很全面了.  </p>
+</blockquote>
+<p>所以我们今天这篇文章就是要介绍这三种路由是如何在 Beego内部实现的.  </p>
+<span id="more"></span>
+
+<p>关于 Beego的源码注释可以见我的<a target="_blank" rel="noopener" href="https://github.com/riccoqu/Beego-Comments"><strong>Github</strong></a></p>
+<h2 id="一个简单的示例"><a href="#一个简单的示例" class="headerlink" title="一个简单的示例"></a>一个简单的示例</h2><p>让我们先从官网给出的示例开始,下面是会在浏览器中打印”HelloWorld”的一个Beego程序.</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span>(</span><br><span class="line">	<span class="string">&quot;github.com/astaxie/beego&quot;</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> MainController <span class="keyword">struct</span> &#123;</span><br><span class="line">	beego.Controller</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(this *MainController)</span></span> Get() &#123;</span><br><span class="line">	this.Ctx.WriteString(<span class="string">&quot;Hello World&quot;</span>)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">		beego.Router(<span class="string">&quot;/&quot;</span>,&amp;MainController&#123;&#125;)</span><br><span class="line">		beego.Run()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们需要先知道它干了什么:</p>
+<ol>
+<li>自定义了一个内含 beego.Controller(这个类型后面会讲到)控制器的 MainController</li>
+<li>重写了 MainController的 Get()方法,熟悉 Go语言的应该知道这个方法来自 Controller</li>
+<li>在 main()函数中调用了 beego.Router()方法注册了路由”&#x2F;“和一个 MainController实例</li>
+<li>执行了 beego.Run()方法启用了 beego程序</li>
+</ol>
+<h2 id="重要的类型和接口"><a href="#重要的类型和接口" class="headerlink" title="重要的类型和接口"></a>重要的类型和接口</h2><p>为了不在接下来的流程中打断,在介绍流程之前需要先了解 beego中关于路由的一些东西</p>
+<h3 id="ControllerInterface-接口"><a href="#ControllerInterface-接口" class="headerlink" title="ControllerInterface 接口"></a>ControllerInterface 接口</h3><p>源文件中的位置: beego&#x2F;controller.go:90</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ControllerInterface <span class="keyword">interface</span> &#123;</span><br><span class="line">		Init(ct *context.Context,controllerName,actionName <span class="type">string</span>,app <span class="keyword">interface</span>&#123;&#125;)</span><br><span class="line">		Prepare()</span><br><span class="line">		Get()</span><br><span class="line">		Post()</span><br><span class="line">		Delete()</span><br><span class="line">		Put()</span><br><span class="line">		Head()</span><br><span class="line">		Patch()</span><br><span class="line">		Options()</span><br><span class="line">		Finish()</span><br><span class="line">		Render() <span class="type">error</span></span><br><span class="line">		XSRFToken() <span class="type">string</span></span><br><span class="line">		CheckXSRFCookie() <span class="type">bool</span></span><br><span class="line">		HandlerFunc(fn <span class="type">string</span>) <span class="type">bool</span></span><br><span class="line">		URLMapping()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这个接口定义了 15个方法,看名字就能够知道这是每个 Controller都需要实现的接口</p>
+<h3 id="Controller结构体"><a href="#Controller结构体" class="headerlink" title="Controller结构体"></a>Controller结构体</h3><p>位置 beego&#x2F;controller.go:60</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Controller <span class="keyword">struct</span> &#123;</span><br><span class="line"></span><br><span class="line"><span class="comment">//context data</span></span><br><span class="line">Ctx  *context.Context</span><br><span class="line">Data <span class="keyword">map</span>[<span class="keyword">interface</span>&#123;&#125;]<span class="keyword">interface</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//route controller info</span></span><br><span class="line">controllerName <span class="type">string</span></span><br><span class="line">actionName     <span class="type">string</span></span><br><span class="line">methodMapping  <span class="keyword">map</span>[<span class="type">string</span>]<span class="function"><span class="keyword">func</span><span class="params">()</span></span> <span class="comment">//method:routertree</span></span><br><span class="line">gotofunc       <span class="type">string</span></span><br><span class="line">AppController  <span class="keyword">interface</span>&#123;&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// template data</span></span><br><span class="line">TplName        <span class="type">string</span></span><br><span class="line">Layout         <span class="type">string</span></span><br><span class="line">LayoutSections <span class="keyword">map</span>[<span class="type">string</span>]<span class="type">string</span> <span class="comment">// the key is the section name and the value is the template name</span></span><br><span class="line">TplExt         <span class="type">string</span></span><br><span class="line">EnableRender   <span class="type">bool</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// xsrf data</span></span><br><span class="line">_xsrfToken <span class="type">string</span></span><br><span class="line">XSRFExpire <span class="type">int</span></span><br><span class="line">EnableXSRF <span class="type">bool</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// session</span></span><br><span class="line">CruSession session.Store</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这个结构体保存了作为 Controller的一些必要的信息,一些基础的字段看名字就比较好理解<br>在这里的 context.Context(Beego中的上下文,封装了 HTTP的输入和输出)和 Session.Store(用于存储 Session)在以后的文章中会再提到  </p>
+<p>在这个源文件中的后面部分都是对 Controller的一些方法实现,我们会注意到 Controller实现了 ControllerInterface的方法,但是在一些方法实现中却是用 Ctx成员向客户端进行错误输出(例如 Get()方法)。<br>因为就像例子中给的一样,当我们需要自己定义 Controller,并且使用 Get()函数来完成对客户端 Get请求的处理时,我们就需要自己实现处理逻辑,这样就<strong>覆盖</strong>了本身输出错误的方法.而对于我们没有实现的方法(比如例子中的 Post()方法)没有重写,则对于客户端的 Post请求就会输出错误了</p>
+<h3 id="ControllerRegister结构体"><a href="#ControllerRegister结构体" class="headerlink" title="ControllerRegister结构体"></a>ControllerRegister结构体</h3><p>这是一个非常关键的数据结构,为什么说他关键呢?我们可以先看下 Beego中 App结构体的定义<br>位置: beego&#x2F;app.go</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> App <span class="keyword">struct</span> &#123;</span><br><span class="line">	Handlers *ControllerRegister</span><br><span class="line">	Server *http.Server</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>关于 App需要说下,在程序中 App类型的变量<strong>BeeApp</strong>(beego&#x2F;app.go:32)在 init()函数中会调用 NewApp()创建出唯一的一个Beego程序实例<br>可以看到在例子中 main()函数最后调用了 beego.Run()函数,这个函数会在设置完hooks(关于回调方法以后也会介绍)后进入 BeeApp.Run()函数并且在进入这个函数后就会根据配置项开始不同的　HTTP请求的处理(在 ControllerRegister实现的 ServeHTTP()方法中)<br>App中一共就两个变量,一个<strong>Server</strong>(标准包中 http.Server类型,这个不做介绍,需要的可以看 Go语言文档).<br>另外一个就是 <strong>ControllerRegister</strong>,这个 ControllerRegister顾名思义就是注册 Controller的管理器,那么如何管理的呢?接下来看定义</p>
+<p>位置: beego&#x2F;router.go:115</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ControllerRegister <span class="keyword">struct</span> &#123;</span><br><span class="line">	routers <span class="keyword">map</span>[<span class="type">string</span>][]*Tree</span><br><span class="line">	enableFilter <span class="type">bool</span></span><br><span class="line">	filters <span class="keyword">map</span>[<span class="type">int</span>][]*FilterRouter</span><br><span class="line">	pool sync.Pool</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到这篇文章的主角已经出现了, routers就是我们程序运行时所需要的路由表, routers的 key是我们注册的方法名(例如”get”、”post”等),而 value就是由注册的路由构建出来的路由树了(关于路由树,后面也会讲到).</p>
+<h3 id="ControllerInfo结构体"><a href="#ControllerInfo结构体" class="headerlink" title="ControllerInfo结构体"></a>ControllerInfo结构体</h3><p>这个结构体是用来保存我们自定义的控制器信息的,看下定义便知道<br>位置: beego&#x2F;router.go:104</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ControllerInfo <span class="keyword">struct</span> &#123;</span><br><span class="line">	pattern <span class="type">string</span>	<span class="comment">//模式</span></span><br><span class="line">	controllerType reflect.Type<span class="comment">//类型</span></span><br><span class="line">	methods <span class="keyword">map</span>[<span class="type">string</span>]<span class="type">string</span><span class="comment">//支持的方法</span></span><br><span class="line">	handler http.Handler<span class="comment">//http.Handler接口</span></span><br><span class="line">	runFunction FilterFunc</span><br><span class="line">	routerType <span class="type">int</span><span class="comment">//路由类型</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="Tree结构体"><a href="#Tree结构体" class="headerlink" title="Tree结构体"></a>Tree结构体</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Tree <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">//路由前缀</span></span><br><span class="line">	prefix <span class="type">string</span></span><br><span class="line">	<span class="comment">//不带正则的路由</span></span><br><span class="line">	fixrouters []*Tree</span><br><span class="line">	<span class="comment">//通配符,如果设置并且查找 fixrouters失败时会来查找 wildcard</span></span><br><span class="line">	wildcard *Tree</span><br><span class="line">	<span class="comment">//叶子节点,如果设置并且查找 wildcard失败后会查找 leaves,里面保存了一些正则的信息</span></span><br><span class="line">	leaves []*leafInfo</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="leafInfo结构体"><a href="#leafInfo结构体" class="headerlink" title="leafInfo结构体"></a>leafInfo结构体</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> leafInfo <span class="keyword">struct</span> &#123;</span><br><span class="line">	wildcards []<span class="type">string</span><span class="comment">//通配符</span></span><br><span class="line">	regexps *regexp.Regexp<span class="comment">//正则对象</span></span><br><span class="line">	runObject <span class="keyword">interface</span>&#123;&#125;<span class="comment">//一般保存得到的 ControllerInfo对象,在处理请求时会返回该对象,并调用处理方法</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这两个结构体就会构成一颗用来查找路由的路由树,通过结构体的定义我们应该不难看出关于正则的部分都会存放在叶子节点中.所以这个路由树的大致样子也比较好理解</p>
+<h2 id="路由的注册过程"><a href="#路由的注册过程" class="headerlink" title="路由的注册过程"></a>路由的注册过程</h2><p>在前面的实例中可以看到需要注册自己的 Controller时使用的是 beego.Router()函数(在官方开发文档中的基础路由部分也可以使用 beego.Get()方法注册路由,不过内部与用 beego.Router()注册方法相比都会使用 addToRouter()函数,所以也是比较相似的)  </p>
+<p>看下 beego.Router的原型:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">beego/app.<span class="keyword">go</span>:<span class="number">211</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Router</span><span class="params">(rootpath <span class="type">string</span>,c ControllerInterface,mappingMethods ...<span class="type">string</span> *App)</span></span> &#123;</span><br><span class="line">		BeeApp.Handlers.Add(rootpath,c,mappingMethods...)</span><br><span class="line">		<span class="keyword">return</span> BeeApp</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>看到第一个参数是需要注册路由,而第二个参数是我们自定义实现了 ControllerInterface接口的控制器,第三个就是自定义路由中方法和处理函数的映射关系<br>函数内部实际调用了 App.ControllerRegister的Add()方法来注册<br>接下来看看 Add()方法做了什么:<br>位置: beego&#x2F;router.go:144</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ControllerRegister)</span></span> Add(pattern <span class="type">string</span>, c ControllerInterface, mappingMethods ...<span class="type">string</span>) &#123;</span><br><span class="line">	reflectVal := reflect.ValueOf(c)	<span class="comment">//反射获得 value</span></span><br><span class="line">	t := reflect.Indirect(reflectVal).Type()<span class="comment">//反射获得 type</span></span><br><span class="line">	methods := <span class="built_in">make</span>(<span class="keyword">map</span>[<span class="type">string</span>]<span class="type">string</span>)</span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(mappingMethods) &gt; <span class="number">0</span> &#123;</span><br><span class="line">		semi := strings.Split(mappingMethods[<span class="number">0</span>], <span class="string">&quot;;&quot;</span>)<span class="comment">//切分出每个以&#x27;;&#x27;分隔的自定义方法和对应的函数</span></span><br><span class="line">		<span class="keyword">for</span> _, v := <span class="keyword">range</span> semi &#123;</span><br><span class="line">			colon := strings.Split(v, <span class="string">&quot;:&quot;</span>)<span class="comment">//切分出以&#x27;:&#x27;分隔的方法名和对应的函数,colon[1]为处理的函数名</span></span><br><span class="line">			<span class="keyword">if</span> <span class="built_in">len</span>(colon) != <span class="number">2</span> &#123;</span><br><span class="line">				<span class="built_in">panic</span>(<span class="string">&quot;method mapping format is invalid&quot;</span>)</span><br><span class="line">			&#125;</span><br><span class="line">			comma := strings.Split(colon[<span class="number">0</span>], <span class="string">&quot;,&quot;</span>)<span class="comment">//切分出以&#x27;,&#x27;分隔的方法名, comma包含了当前需要注册的所有方法名</span></span><br><span class="line">			<span class="keyword">for</span> _, m := <span class="keyword">range</span> comma &#123;</span><br><span class="line">				<span class="keyword">if</span> _, ok := HTTPMETHOD[strings.ToUpper(m)]; m == <span class="string">&quot;*&quot;</span> || ok &#123;</span><br><span class="line">					<span class="comment">//如果方法名为通配符&#x27;*&#x27;或者在支持的方法列表中.并使用反射包中的方法获得一个绑定对应函数的　Value类型</span></span><br><span class="line">					<span class="comment">//如果返回的值有效,就将当前方法加入到 methods中</span></span><br><span class="line">					<span class="keyword">if</span> val := reflectVal.MethodByName(colon[<span class="number">1</span>]); val.IsValid() &#123;</span><br><span class="line">						methods[strings.ToUpper(m)] = colon[<span class="number">1</span>]</span><br><span class="line">					&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">					<span class="comment">//不支持方法时报错</span></span><br><span class="line">						<span class="built_in">panic</span>(<span class="string">&quot;&#x27;&quot;</span> + colon[<span class="number">1</span>] + <span class="string">&quot;&#x27; method doesn&#x27;t exist in the controller &quot;</span> + t.Name())</span><br><span class="line">					&#125;</span><br><span class="line">				&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">						<span class="built_in">panic</span>(v + <span class="string">&quot; is an invalid method mapping. Method doesn&#x27;t exist &quot;</span> + m)</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//添加 ControllerInfo类型来保存此项路由规则</span></span><br><span class="line">	route := &amp;controllerInfo&#123;&#125;</span><br><span class="line">	route.pattern = pattern</span><br><span class="line">	route.methods = methods</span><br><span class="line">	route.routerType = routerTypeBeego</span><br><span class="line">	route.controllerType = t</span><br><span class="line">	<span class="comment">//当传入的方法名为空时,给当前模式加入所有支持的方法</span></span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(methods) == <span class="number">0</span> &#123;</span><br><span class="line">		<span class="keyword">for</span> _, m := <span class="keyword">range</span> HTTPMETHOD &#123;</span><br><span class="line">			p.addToRouter(m, pattern, route)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//方法名不为空时,判断是否含有通配符 &quot;*&quot;</span></span><br><span class="line">		<span class="keyword">for</span> k := <span class="keyword">range</span> methods &#123;</span><br><span class="line">			<span class="keyword">if</span> k == <span class="string">&quot;*&quot;</span> &#123;</span><br><span class="line">				<span class="keyword">for</span> _, m := <span class="keyword">range</span> HTTPMETHOD &#123;</span><br><span class="line">					<span class="comment">//含有通配符,加入所有方法</span></span><br><span class="line">					p.addToRouter(m, pattern, route)</span><br><span class="line">					&#125;</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">					<span class="comment">//只加入指定的方法</span></span><br><span class="line">					p.addToRouter(k, pattern, route)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这是一个稍微长点的函数,不过通过注释可以看出这个函数做了几个工作:</p>
+<ol>
+<li>解析了传入的 mappingMethods,得到其中包含的全部方法</li>
+<li>用传入的4个参数构造出一个 ControllerInfo的实例,而这个实例中就保存了我们自定的控制器的 reflct.Type类型(可参考<a href="#ControllerInfo%E7%BB%93%E6%9E%84%E4%BD%93">ControllerInfo</a>)</li>
+</ol>
+<p>在函数的最后调用了 ControllerRegister的 addToRouter()方法</p>
+<p>位置: beego&#x2F;router.go:199</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ControllerRegister)</span></span> addToRouter(method, pattern <span class="type">string</span>, r *controllerInfo) &#123;</span><br><span class="line">	<span class="keyword">if</span> !BConfig.RouterCaseSensitive &#123;</span><br><span class="line">		pattern = strings.ToLower(pattern)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> t, ok := p.routers[method]; ok &#123;</span><br><span class="line">		<span class="comment">//如果方法对应的路由树存在就直接添加</span></span><br><span class="line">		t.AddRouter(pattern, r)</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//方法不存在这新创建一个路由树</span></span><br><span class="line">		t := NewTree()</span><br><span class="line">		t.AddRouter(pattern, r)</span><br><span class="line">		<span class="comment">//设定新方法的路由树</span></span><br><span class="line">		p.routers[method] = t</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这个方法比较短,主要是判断当前的方法是否在 ControllerRegister的成员 routers所支持的方法中  </p>
+<ul>
+<li>存在就直接插入对应的路由树  </li>
+<li>否则创建一个新的路由树</li>
+</ul>
+<p>路由树节点的插入操作就是 Tree.AddRouter()方法</p>
+<p>位置: beego&#x2F;tree.go:206</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(t *Tree)</span></span> AddRouter(pattern <span class="type">string</span>,runObject <span class="keyword">interface</span>&#123;&#125;) &#123;</span><br><span class="line">	t.addseg(splitPath(pattern),runObject,<span class="literal">nil</span>,<span class="string">&quot;&quot;</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看出它只是把 pattern中的路径进行了切割(例如”&#x2F;admin&#x2F;users”切割成”[“admin”,”users”]”),并返回一个 string类型的数组切片<br>那么接下来的目的就很明确了,我们需要使用 Tree提供的 addseg方法给路由树<strong>添加节点</strong></p>
+<p>这个函数也是最终的一个函数了,函数的逻辑可以看注释</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(t *Tree)</span></span> addseg(segments []<span class="type">string</span>, route <span class="keyword">interface</span>&#123;&#125;, wildcards []<span class="type">string</span>, reg <span class="type">string</span>) &#123;</span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(segments) == <span class="number">0</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> reg != <span class="string">&quot;&quot;</span> &#123;</span><br><span class="line">			<span class="comment">//添加 leaves节点,并给 leaves添加正则规则</span></span><br><span class="line">			t.leaves = <span class="built_in">append</span>(t.leaves, &amp;leafInfo&#123;runObject: route, wildcards: wildcards, regexps: regexp.MustCompile(<span class="string">&quot;^&quot;</span> + reg + <span class="string">&quot;$&quot;</span>)&#125;)</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			t.leaves = <span class="built_in">append</span>(t.leaves, &amp;leafInfo&#123;runObject: route, wildcards: wildcards&#125;)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		seg := segments[<span class="number">0</span>]</span><br><span class="line">		iswild, params, regexpStr := splitSegment(seg)<span class="comment">//splitSegment函数在后面介绍</span></span><br><span class="line">		<span class="comment">// if it&#x27;s ? meaning can igone this, so add one more rule for it</span></span><br><span class="line">		<span class="keyword">if</span> <span class="built_in">len</span>(params) &gt; <span class="number">0</span> &amp;&amp; params[<span class="number">0</span>] == <span class="string">&quot;:&quot;</span> &#123;</span><br><span class="line">			<span class="comment">//当　params[0]为&#x27;:&#x27;时,代表参数为空,开始解析下一个</span></span><br><span class="line">			t.addseg(segments[<span class="number">1</span>:], route, wildcards, reg)<span class="comment">//递归调用</span></span><br><span class="line">			params = params[<span class="number">1</span>:]</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//Rule: /login/*/access match /login/2009/11/access</span></span><br><span class="line">		<span class="comment">//if already has *, and when loop the access, should as a regexpStr</span></span><br><span class="line">		<span class="comment">//全匹配方式,可参考　http://beego.me/docs/mvc/controller/router.md 的正则路由-&gt;全匹配方式</span></span><br><span class="line">		<span class="comment">// utils.InSlice()检查&quot;:solat&quot;是否在wildcards中</span></span><br><span class="line">		<span class="keyword">if</span> !iswild &amp;&amp; utils.InSlice(<span class="string">&quot;:splat&quot;</span>, wildcards) &#123;</span><br><span class="line">			<span class="comment">//如果使用了全匹配方式则继续使用正则解析</span></span><br><span class="line">			iswild = <span class="literal">true</span></span><br><span class="line">			regexpStr = seg</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//Rule: /user/:id/*</span></span><br><span class="line">		<span class="keyword">if</span> seg == <span class="string">&quot;*&quot;</span> &amp;&amp; <span class="built_in">len</span>(wildcards) &gt; <span class="number">0</span> &amp;&amp; reg == <span class="string">&quot;&quot;</span> &#123;</span><br><span class="line">			regexpStr = <span class="string">&quot;(.+)&quot;</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//包含有正则表达式　</span></span><br><span class="line">		<span class="keyword">if</span> iswild &#123;</span><br><span class="line">			<span class="keyword">if</span> t.wildcard == <span class="literal">nil</span> &#123;</span><br><span class="line">				t.wildcard = NewTree()</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> regexpStr != <span class="string">&quot;&quot;</span> &#123;</span><br><span class="line">				<span class="keyword">if</span> reg == <span class="string">&quot;&quot;</span> &#123;</span><br><span class="line">					rr := <span class="string">&quot;&quot;</span></span><br><span class="line">					<span class="keyword">for</span> _, w := <span class="keyword">range</span> wildcards &#123;</span><br><span class="line">						<span class="keyword">if</span> w == <span class="string">&quot;:splat&quot;</span> &#123;</span><br><span class="line">							rr = rr + <span class="string">&quot;(.+)/&quot;</span></span><br><span class="line">						&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">							rr = rr + <span class="string">&quot;([^/]+)/&quot;</span></span><br><span class="line">						&#125;</span><br><span class="line">					&#125;</span><br><span class="line">					regexpStr = rr + regexpStr</span><br><span class="line">				&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">					regexpStr = <span class="string">&quot;/&quot;</span> + regexpStr</span><br><span class="line">				&#125;</span><br><span class="line">			&#125; <span class="keyword">else</span> <span class="keyword">if</span> reg != <span class="string">&quot;&quot;</span> &#123;</span><br><span class="line">				<span class="keyword">if</span> seg == <span class="string">&quot;*.*&quot;</span> &#123;</span><br><span class="line">					regexpStr = <span class="string">&quot;/([^.]+).(.+)&quot;</span></span><br><span class="line">					params = params[<span class="number">1</span>:]</span><br><span class="line">				&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">					<span class="keyword">for</span> <span class="keyword">range</span> params &#123;</span><br><span class="line">						regexpStr = <span class="string">&quot;/([^/]+)&quot;</span> + regexpStr</span><br><span class="line">					&#125;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				<span class="keyword">if</span> seg == <span class="string">&quot;*.*&quot;</span> &#123;</span><br><span class="line">					params = params[<span class="number">1</span>:]</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			t.wildcard.addseg(segments[<span class="number">1</span>:], route, <span class="built_in">append</span>(wildcards, params...), reg+regexpStr)<span class="comment">//递归调用</span></span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="keyword">var</span> subTree *Tree</span><br><span class="line">			<span class="keyword">for</span> _, sub := <span class="keyword">range</span> t.fixrouters &#123;</span><br><span class="line">				<span class="keyword">if</span> sub.prefix == seg &#123;</span><br><span class="line">					subTree = sub</span><br><span class="line">					<span class="keyword">break</span></span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> subTree == <span class="literal">nil</span> &#123;</span><br><span class="line">				subTree = NewTree()</span><br><span class="line">				subTree.prefix = seg</span><br><span class="line">				t.fixrouters = <span class="built_in">append</span>(t.fixrouters, subTree)</span><br><span class="line">			&#125;</span><br><span class="line">			subTree.addseg(segments[<span class="number">1</span>:], route, wildcards, reg)<span class="comment">//递归调用</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>至此路由树节点添加完成  </p>
+<p>这里需要提一下 splitSegment这个函数<br>位置: beego&#x2F;tree.go:489</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// &quot;admin&quot; -&gt; false, nil, &quot;&quot;</span></span><br><span class="line"><span class="comment">// &quot;:id&quot; -&gt; true, [:id], &quot;&quot;</span></span><br><span class="line"><span class="comment">// &quot;?:id&quot; -&gt; true, [: :id], &quot;&quot;        : meaning can empty</span></span><br><span class="line"><span class="comment">// &quot;:id:int&quot; -&gt; true, [:id], ([0-9]+)</span></span><br><span class="line"><span class="comment">// &quot;:name:string&quot; -&gt; true, [:name], ([\w]+)</span></span><br><span class="line"><span class="comment">// &quot;:id([0-9]+)&quot; -&gt; true, [:id], ([0-9]+)</span></span><br><span class="line"><span class="comment">// &quot;:id([0-9]+)_:name&quot; -&gt; true, [:id :name], ([0-9]+)_(.+)</span></span><br><span class="line"><span class="comment">// &quot;cms_:id_:page.html&quot; -&gt; true, [:id_ :page], cms_(.+)(.+).html</span></span><br><span class="line"><span class="comment">// &quot;cms_:id(.+)_:page.html&quot; -&gt; true, [:id :page], cms_(.+)_(.+).html</span></span><br><span class="line"><span class="comment">// &quot;*&quot; -&gt; true, [:splat], &quot;&quot;</span></span><br><span class="line"><span class="comment">// &quot;*.*&quot; -&gt; true,[. :path :ext], &quot;&quot;      . meaning separator</span></span><br><span class="line"><span class="comment">//正则路由,用于对正则的 Segment进行解析</span></span><br><span class="line"><span class="comment">//当 key中包含正则 返回true，否则返回false</span></span><br><span class="line"><span class="comment">//返回值第二个为不同的参数</span></span><br><span class="line"><span class="comment">//第三个为正则的规则</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">splitSegment</span><span class="params">(key <span class="type">string</span>)</span></span> (<span class="type">bool</span>, []<span class="type">string</span>, <span class="type">string</span>)</span><br></pre></td></tr></table></figure>
+
+<h2 id="Final"><a href="#Final" class="headerlink" title="Final"></a>Final</h2><p>最终我们从调用beego.Router()到最后给 ControllerRegister.router成功添加路由树节点的过程就完成了<br>总结一下就是注册路由的过程就是在添加 ControllerRegister中的路由树的节点,而在 HTTP执行的过程中对这棵树进行搜索(这就到树的搜索方法了),从而判断接受到的请求应该怎么样的处理(对应的根据 Controller不同的类型调用不同的方法)<br>完成 HTTP请求的正常处理过程:D</p>
+<p>如果文章有误,非常希望能给我提出,好让我更正 :D</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Beego-Framework/" rel="tag"># Beego Framework</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2016/07/30/Beego%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E4%B8%80-%E9%85%8D%E7%BD%AE%E9%A1%B9%E5%88%9D%E5%A7%8B%E5%8C%96%E6%B5%81%E7%A8%8B/" rel="prev" title="Beego源码解析(一)——配置项初始化流程">
+      <i class="fa fa-chevron-left"></i> Beego源码解析(一)——配置项初始化流程
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2016/08/02/Beego%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E4%B8%89-HTTP%E8%AF%B7%E6%B1%82%E5%A4%84%E7%90%86%E6%B5%81%E7%A8%8B/" rel="next" title="Beego源码解析(三)-HTTP请求处理流程">
+      Beego源码解析(三)-HTTP请求处理流程 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E7%A4%BA%E4%BE%8B"><span class="nav-number">1.</span> <span class="nav-text">一个简单的示例</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%87%8D%E8%A6%81%E7%9A%84%E7%B1%BB%E5%9E%8B%E5%92%8C%E6%8E%A5%E5%8F%A3"><span class="nav-number">2.</span> <span class="nav-text">重要的类型和接口</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#ControllerInterface-%E6%8E%A5%E5%8F%A3"><span class="nav-number">2.1.</span> <span class="nav-text">ControllerInterface 接口</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Controller%E7%BB%93%E6%9E%84%E4%BD%93"><span class="nav-number">2.2.</span> <span class="nav-text">Controller结构体</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ControllerRegister%E7%BB%93%E6%9E%84%E4%BD%93"><span class="nav-number">2.3.</span> <span class="nav-text">ControllerRegister结构体</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ControllerInfo%E7%BB%93%E6%9E%84%E4%BD%93"><span class="nav-number">2.4.</span> <span class="nav-text">ControllerInfo结构体</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Tree%E7%BB%93%E6%9E%84%E4%BD%93"><span class="nav-number">2.5.</span> <span class="nav-text">Tree结构体</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#leafInfo%E7%BB%93%E6%9E%84%E4%BD%93"><span class="nav-number">2.6.</span> <span class="nav-text">leafInfo结构体</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%B7%AF%E7%94%B1%E7%9A%84%E6%B3%A8%E5%86%8C%E8%BF%87%E7%A8%8B"><span class="nav-number">3.</span> <span class="nav-text">路由的注册过程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Final"><span class="nav-number">4.</span> <span class="nav-text">Final</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">riccoqu</p>
+  <div class="site-description" itemprop="description">this guy is lazy, dont like to leave a description</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">7</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">tags</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">riccoqu</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
